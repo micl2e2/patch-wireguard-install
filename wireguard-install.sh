@@ -185,6 +185,19 @@ function installQuestions() {
 	read -n1 -r -p "Press any key to continue..."
 }
 
+function installSELinuxRules() {
+	local osid
+	osid="$1"
+
+	if [[ $osid == 'fedora' ]]; then
+		dnf install -y checkpolicy
+		echo "module se_wg 1.0;require { type wireguard_t; class capability { dac_override dac_read_search }; } allow wireguard_t self:capability { dac_override dac_read_search };" >/tmp/se_wg.te && checkmodule -M -m -o /tmp/se_wg.mod /tmp/se_wg.te && semodule_package -o /tmp/se_wg.pp -m /tmp/se_wg.mod && semodule -i /tmp/se_wg.pp
+	elif [[ $osid == 'centos' || $osid == 'almalinux' || $osid == 'rocky' ]]; then
+		dnf install -y checkpolicy
+		echo "module se_wg 1.0; require {type wireguard_t; type cert_t; type firewalld_t; class capability { dac_override dac_read_search }; class dir search; class dbus send_msg;} allow wireguard_t cert_t:dir search; allow wireguard_t firewalld_t:dbus send_msg; allow wireguard_t self:capability { dac_override dac_read_search };" >/tmp/se_wg.te && checkmodule -M -m -o /tmp/se_wg.mod /tmp/se_wg.te && semodule_package -o /tmp/se_wg.pp -m /tmp/se_wg.mod && semodule -i /tmp/se_wg.pp
+	fi
+}
+
 function installWireGuard() {
 	# Run setup questions first
 	installQuestions
@@ -281,6 +294,8 @@ PostDown = ip6tables -t nat -D POSTROUTING -o ${SERVER_PUB_NIC} -j MASQUERADE" >
 	# Enable routing on the server
 	echo "net.ipv4.ip_forward = 1
 net.ipv6.conf.all.forwarding = 1" >/etc/sysctl.d/wg.conf
+
+	installSELinuxRules ${OS}
 
 	if [[ ${OS} == 'alpine' ]]; then
 		sysctl -p /etc/sysctl.d/wg.conf
